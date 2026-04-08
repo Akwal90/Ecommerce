@@ -18,28 +18,27 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
 // Initialize Supabase with Service Role Key for server-side operations
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+const app = express();
+const PORT = 3000;
 
-  app.use(express.json());
-  app.use(cookieParser());
-  app.use(cors());
+app.use(express.json());
+app.use(cookieParser());
+app.use(cors());
 
-  // Auth Middleware
-  const authenticateToken = (req: any, res: any, next: any) => {
-    const token = req.cookies.token;
-    if (!token) return res.status(401).json({ message: 'Unauthorized' });
+// Auth Middleware
+const authenticateToken = (req: any, res: any, next: any) => {
+  const token = req.cookies.token;
+  if (!token) return res.status(401).json({ message: 'Unauthorized' });
 
-    jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
-      if (err) return res.status(403).json({ message: 'Forbidden' });
-      req.user = user;
-      next();
-    });
-  };
+  jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+    if (err) return res.status(403).json({ message: 'Forbidden' });
+    req.user = user;
+    next();
+  });
+};
 
-  // API Routes
-  app.post('/api/auth/bootstrap', async (req, res) => {
+// API Routes
+app.post('/api/auth/bootstrap', async (req, res) => {
     const { secret } = req.body;
     if (secret !== 'logitrack-init-2026') {
       return res.status(403).json({ message: 'Invalid bootstrap secret' });
@@ -318,27 +317,29 @@ async function startServer() {
         }]);
     }
 
-    res.json({ success: true });
+  res.json({ success: true });
+});
+
+// Vite middleware for development
+if (process.env.NODE_ENV !== 'production') {
+  const { createServer: createViteServer } = await import('vite');
+  const vite = await createViteServer({
+    server: { middlewareMode: true },
+    appType: 'spa',
   });
+  app.use(vite.middlewares);
+} else {
+  const distPath = path.join(process.cwd(), 'dist');
+  app.use(express.static(distPath));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
-
+if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 
-startServer();
+export default app;
