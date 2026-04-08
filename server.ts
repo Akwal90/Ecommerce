@@ -11,6 +11,10 @@ const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key';
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
+if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+  console.error('CRITICAL: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing from environment variables.');
+}
+
 // Initialize Supabase with Service Role Key for server-side operations
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
@@ -35,6 +39,42 @@ async function startServer() {
   };
 
   // API Routes
+  app.post('/api/auth/bootstrap', async (req, res) => {
+    const { secret } = req.body;
+    if (secret !== 'logitrack-init-2026') {
+      return res.status(403).json({ message: 'Invalid bootstrap secret' });
+    }
+
+    const email = 'akinyeleawwal@gmail.com';
+    const password_hash = await bcrypt.hash('admin123', 10);
+
+    const { data: existingUser } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (existingUser) {
+      return res.json({ message: 'Admin account already exists' });
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .insert([{
+        email,
+        password_hash,
+        name: 'Super Admin',
+        state: 'Lagos',
+        role: 'admin'
+      }]);
+
+    if (error) {
+      return res.status(500).json({ message: error.message });
+    }
+
+    res.json({ message: 'Admin account created successfully. Default password is: admin123' });
+  });
+
   app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
     
@@ -42,10 +82,22 @@ async function startServer() {
       .from('profiles')
       .select('*')
       .eq('email', email)
-      .single();
+      .maybeSingle();
 
-    if (error || !user || !(await bcrypt.compare(password, user.password_hash))) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+    if (error) {
+      console.error('Database error during login:', error);
+      return res.status(500).json({ message: 'Database connection error' });
+    }
+
+    if (!user) {
+      console.log(`Login attempt failed: User ${email} not found`);
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+    if (!isPasswordValid) {
+      console.log(`Login attempt failed: Incorrect password for ${email}`);
+      return res.status(401).json({ message: 'Invalid email or password' });
     }
 
     // Strictly allow only the authorized email to log in
